@@ -169,9 +169,11 @@ export const PlanSvg = memo(function PlanSvg(props: PlanProps) {
       {analysis?.treeSpot && options.overlays.zones && (
         <g>
           <circle cx={analysis.treeSpot.x} cy={analysis.treeSpot.y} r={analysis.treeSpot.r} fill="none" stroke={P.good} {...sp(1)} strokeDasharray={mpp ? '0.05 0.05' : '3 4'} />
-          <text x={analysis.treeSpot.x} y={analysis.treeSpot.y - analysis.treeSpot.r * 0.55} textAnchor="middle" dominantBaseline="middle" fontSize={textSize * 0.85} fill={P.good} style={{ fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.06em' }}>
+          {treeLabelShown(analysis) && (
+            <text x={treeLabel(analysis).x} y={treeLabel(analysis).y} textAnchor="middle" dominantBaseline="middle" fontSize={textSize * 0.85} fill={P.good} style={{ fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.06em' }}>
             TREE HERE
           </text>
+          )}
         </g>
       )}
 
@@ -454,6 +456,29 @@ function arcSweep(c: Vec2, a: Vec2, b: Vec2) {
 }
 
 // ---------------------------------------------------------------------------
+
+/** The tree's own label only when it won't sit on top of the play floor's. */
+function treeLabelShown(a: Analysis) {
+  const t = a.treeSpot!;
+  const p = a.playZone;
+  return !p || Math.hypot(t.x - p.x, t.y - p.y) > p.r + t.r * 0.3;
+}
+
+/** Put the tree label on the side of its circle away from the play floor. */
+function treeLabel(a: Analysis): Vec2 {
+  const t = a.treeSpot!;
+  const p = a.playZone;
+  let dx = 0;
+  let dy = -1;
+  if (p) {
+    const l = Math.hypot(t.x - p.x, t.y - p.y);
+    if (l > 0.05) {
+      dx = (t.x - p.x) / l;
+      dy = (t.y - p.y) / l;
+    }
+  }
+  return { x: t.x + dx * t.r * 0.55, y: t.y + dy * t.r * 0.55 };
+}
 
 interface PlacedLabel {
   id: string;

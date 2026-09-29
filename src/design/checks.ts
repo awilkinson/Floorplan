@@ -416,7 +416,7 @@ export function analyzeLayout(room: Room, layout: Layout, custom: Record<string,
   });
   if (main && main.kind === 'seat') {
     const near = lamps.filter((l) => Math.hypot(l.x - main.obb.c.x, l.y - main.obb.c.y) < 2.2);
-    checks.push(near.length ? { id: 'lamp', group: 'Light', status: 'good', label: `${near.length} lamp${near.length > 1 ? 's' : ''} light the main seating` } : { id: 'lamp', group: 'Light', status: 'warn', label: 'No lamp near the main seating for evenings' });
+    checks.push(near.length ? { id: 'lamp', group: 'Light', status: 'good', label: `${near.length} lamp${near.length > 1 ? 's light' : ' lights'} the main seating` } : { id: 'lamp', group: 'Light', status: 'warn', label: 'No lamp near the main seating for evenings' });
   }
   const reading = seats.filter((s) => s.entry.category === 'lounge-chair' && lamps.some((l) => Math.hypot(l.x - s.obb.c.x, l.y - s.obb.c.y) < 0.95));
   if (reading.length) checks.push({ id: 'reading', group: 'Light', status: 'good', label: `${reading.length === 1 ? 'A reading chair has' : reading.length + ' reading chairs have'} a lamp at the shoulder` });
