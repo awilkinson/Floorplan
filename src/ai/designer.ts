@@ -115,14 +115,26 @@ export async function askForIdeas(brief?: string, req: Partial<IdeaRequest> = {}
     });
     const lines = text.split('\n');
     for (let i = consumed; i < lines.length; i++) handleLine(lines[i]);
-    if (!ids.length) {
-      // tolerate a single JSON array reply
+    // Tolerate replies that aren't one object per line: a JSON array, or
+    // pretty-printed objects spread over several lines.
+    const seen = new Set(useStore.getState().proposals.filter((p) => ids.includes(p.id)).map((p) => p.layout.name));
+    const objects = topLevelObjects(text);
+    if (!objects.length) {
       try {
         const arr = parseJsonLoose(text);
-        if (Array.isArray(arr)) arr.forEach((x) => handleLine(JSON.stringify(x)));
+        if (Array.isArray(arr)) objects.push(...arr.map((x) => JSON.stringify(x)));
       } catch {
         /* ignore */
       }
+    }
+    for (const o of objects) {
+      try {
+        const name = (JSON.parse(o) as RawIdea).name;
+        if (name && seen.has(name)) continue;
+      } catch {
+        continue;
+      }
+      handleLine(o.replace(/\n/g, ' '));
     }
     if (!ids.length) throw { code: 'invalid_json', message: 'no ideas' } as AIError;
     const names = useStore
@@ -136,6 +148,33 @@ export async function askForIdeas(brief?: string, req: Partial<IdeaRequest> = {}
   } finally {
     useThread.setState({ busy: false, controller: null });
   }
+}
+
+/** Every balanced top-level {...} in a text, respecting strings. */
+function topLevelObjects(text: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (c === '}' && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) out.push(text.slice(start, i + 1));
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

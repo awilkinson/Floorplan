@@ -4,6 +4,27 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, copyFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+// The artifact host only accepts text without raw control bytes. In valid
+// JavaScript those can only sit inside string, template or regex literals,
+// where a \xNN escape means the same character. (Control bytes never occur
+// inside UTF-8 multi-byte sequences, so this works on raw bytes.)
+function escapeControls(buf) {
+  const out = [];
+  let changed = 0;
+  for (let i = 0; i < buf.length; i++) {
+    const c = buf[i];
+    if ((c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127) {
+      // an identity escape (backslash + raw byte) becomes just the \xNN escape
+      let bs = 0;
+      for (let j = out.length - 1; j >= 0 && out[j] === 92; j--) bs++;
+      if (bs % 2 === 1) out.pop();
+      for (const ch of '\\x' + c.toString(16).padStart(2, '0')) out.push(ch.charCodeAt(0));
+      changed++;
+    } else out.push(c);
+  }
+  return changed ? Buffer.from(out) : buf;
+}
+
 const dist = 'dist';
 const out = 'artifact';
 const html = readFileSync(join(dist, 'index.html'), 'utf8');
@@ -35,7 +56,8 @@ const files = {};
 let total = page.length;
 for (const f of readdirSync(join(dist, 'assets'))) {
   if (f.endsWith('.css')) continue;
-  copyFileSync(join(dist, 'assets', f), join(out, 'assets', f));
+  if (f.endsWith('.js')) writeFileSync(join(out, 'assets', f), escapeControls(readFileSync(join(dist, 'assets', f))));
+  else copyFileSync(join(dist, 'assets', f), join(out, 'assets', f));
   files[`assets/${f}`] = `${out}/assets/${f}`;
   total += statSync(join(dist, 'assets', f)).size;
 }

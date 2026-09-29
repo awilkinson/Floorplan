@@ -240,9 +240,9 @@ Use these furniture refs when a piece matches (otherwise the closest generic): $
 
 Reply with ONE JSON object and nothing else:
 {"name":"${meta.name}","kind":"${meta.kind}","outline":[[0,0],[300,0],[300,276],[0,276]],"ceiling":108,"ceilingStyle":"flat|coffered|beamed","floor":"wood-dark|wood-mid|wood-light|stone|concrete|carpet|tile","wallColor":"#F1EEE7","walls":[{"treatment":"plain|paneled|wainscot"}],"outlook":"water|garden|city|none",
-"openings":[{"kind":"door|double-door|french-door|sliding-door|window|opening|archway|niche","wall":0,"offset":27,"width":72,"height":96,"sill":0,"swing":"in|out","hinge":"start|end","arched":false,"glazed":true,"label":"Terrace doors"}],
+"openings":[{"kind":"door|double-door|french-door|sliding-door|window|opening|archway|niche","wall":0,"offset":27,"width":72,"height":96,"transom":18,"sill":0,"swing":"in|out","hinge":"start|end","arched":false,"glazed":true,"label":"Terrace doors"}],
 "fixtures":[{"type":"shelves|fireplace|cabinets|window-seat|column","wall":2,"offset":0,"width":216,"depth":20,"height":126,"label":"Library wall"}],
 "furniture":[{"ref":"closest catalog ref","name":"what it is","x":130,"y":140,"facing":270,"w":96,"d":38,"h":30,"finish":{"upholstery":"linen-natural"}}],
 "confidence":"low|medium|high","assumptions":["short notes on what you estimated"],"questions":["up to 3 short questions whose answers would most improve accuracy, e.g. 'How long is the fireplace wall?'"]}
-Walls array has one entry per outline edge.`;
+Walls array has one entry per outline edge. "height" is the door or window itself; "transom" is any fixed glass above it (inches, omit if none).`;
 }

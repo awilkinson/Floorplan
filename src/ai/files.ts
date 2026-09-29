@@ -45,12 +45,13 @@ async function toJpeg(src: CanvasImageSource & { width: number; height: number }
   return { blob, width: w, height: h, url: URL.createObjectURL(blob), name };
 }
 
-let pdfjsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
+// The legacy build carries polyfills; the modern one needs very new browser APIs.
+let pdfjsPromise: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | null = null;
 async function pdfjs() {
   if (!pdfjsPromise) {
     pdfjsPromise = (async () => {
-      const lib = await import('pdfjs-dist');
-      const worker = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+      const lib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const worker = (await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')).default;
       lib.GlobalWorkerOptions.workerSrc = worker;
       return lib;
     })();

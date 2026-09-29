@@ -18,7 +18,7 @@ export interface ScanRaw {
   wallColor?: string;
   walls?: { treatment?: string }[];
   outlook?: string;
-  openings?: { kind?: string; wall?: number; offset?: number; width?: number; height?: number; sill?: number; swing?: string; hinge?: string; arched?: boolean; glazed?: boolean; label?: string }[];
+  openings?: { kind?: string; wall?: number; offset?: number; width?: number; height?: number; transom?: number; sill?: number; swing?: string; hinge?: string; arched?: boolean; glazed?: boolean; label?: string }[];
   fixtures?: { type?: string; wall?: number; offset?: number; width?: number; depth?: number; height?: number; label?: string }[];
   furniture?: { ref?: string; name?: string; x?: number; y?: number; facing?: number; w?: number; d?: number; h?: number; finish?: Record<string, string> }[];
   confidence?: string;
@@ -144,6 +144,7 @@ export function scanToRoom(raw: ScanRaw, meta: { name: string; kind: RoomKind; p
       width,
       height: inch(clamp(o.height, 20, 160) ?? (kind === 'window' ? 60 : 84)),
       sill: kind === 'window' ? inch(clamp(o.sill, 0, 80) ?? 24) : 0,
+      transom: o.transom ? inch(clamp(o.transom, 4, 48) ?? 12) : undefined,
       swing: o.swing === 'out' ? 'out' : 'in',
       hinge: o.hinge === 'end' ? 'end' : 'start',
       archRise: o.arched ? Math.min(width / 2, inch(18)) : undefined,
