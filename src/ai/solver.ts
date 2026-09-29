@@ -154,7 +154,8 @@ function doorZones(room: Room): OBB[] {
     if (!w || o.kind === 'niche' || o.kind === 'window') continue;
     const mid = o.offset + o.width / 2;
     const inward = o.swing !== 'out' && (o.kind === 'door' || o.kind === 'double-door' || o.kind === 'french-door');
-    const depth = inward ? (o.kind === 'door' ? o.width : o.width / 2) : 0.45;
+    // match the planner's checks: 0.5 m in front of out-swinging glass, 0.75 m for openings
+    const depth = inward ? Math.max(o.kind === 'door' ? o.width : o.width / 2, 0.78) : o.swing === 'out' ? 0.53 : 0.78;
     const cx = w.a.x + w.dir.x * mid + w.normal.x * (depth / 2);
     const cy = w.a.y + w.dir.y * mid + w.normal.y * (depth / 2);
     out.push(obbOf(cx, cy, o.width * (inward ? 1 : 0.6), depth, rotationFacingInto(w)));
