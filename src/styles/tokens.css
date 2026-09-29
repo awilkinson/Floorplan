@@ -1,0 +1,100 @@
+/* Floorplan Studio — a drafting table for rooms.
+   Layout: one working surface (3D beside the drawn plan) framed by a slim title bar,
+   a library drawer on the left and the designer on the right. */
+:root {
+  /* paper, ink and the drafting blue of a blueline print */
+  --bg: #F3F2EE;
+  --panel: #FBFAF8;
+  --paper: #FFFFFF;
+  --ink: #17181A;
+  --ink-2: #4A4A47;
+  --muted: #7C7A74;
+  --line: #E3E0D9;
+  --line-2: #D3CFC6;
+  --accent: #2F4FD8;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E7ECFD;
+  --brass: #A07C3B;
+  --good: #2E7D4F;
+  --warn: #B45309;
+  --bad: #B42318;
+  --info: #3A5A8C;
+  --scene-bg: #E9E7E1;
+  --plan-bg: #FFFFFF;
+  --plan-ink: #1B1C20;
+  --plan-poche: #1F2024;
+  --plan-fill: #FFFFFF;
+  --plan-dim: #2F4FD8;
+  --plan-faint: #D7D4CC;
+  --shadow: 0 1px 2px rgba(20, 18, 14, 0.06), 0 8px 24px rgba(20, 18, 14, 0.06);
+  --shadow-pop: 0 2px 6px rgba(20, 18, 14, 0.08), 0 16px 48px rgba(20, 18, 14, 0.14);
+
+  --font-ui: 'Albert Sans', 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
+  --font-display: 'Bodoni Moda', 'Didot', 'Bodoni 72', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --bar-h: 52px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #111214;
+    --panel: #17181B;
+    --paper: #1C1D21;
+    --ink: #EDEBE6;
+    --ink-2: #C3C0B9;
+    --muted: #8E8B84;
+    --line: #2A2B30;
+    --line-2: #383A40;
+    --accent: #8EA2FF;
+    --accent-ink: #0E1020;
+    --accent-soft: #232A4A;
+    --brass: #C9A15B;
+    --good: #5FBF86;
+    --warn: #E39A4B;
+    --bad: #F07A6E;
+    --info: #8FB0E6;
+    --scene-bg: #141518;
+    --plan-bg: #16171A;
+    --plan-ink: #E6E4DE;
+    --plan-poche: #E6E4DE;
+    --plan-fill: #16171A;
+    --plan-dim: #8EA2FF;
+    --plan-faint: #2C2E33;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.35), 0 16px 48px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #111214;
+  --panel: #17181B;
+  --paper: #1C1D21;
+  --ink: #EDEBE6;
+  --ink-2: #C3C0B9;
+  --muted: #8E8B84;
+  --line: #2A2B30;
+  --line-2: #383A40;
+  --accent: #8EA2FF;
+  --accent-ink: #0E1020;
+  --accent-soft: #232A4A;
+  --brass: #C9A15B;
+  --good: #5FBF86;
+  --warn: #E39A4B;
+  --bad: #F07A6E;
+  --info: #8FB0E6;
+  --scene-bg: #141518;
+  --plan-bg: #16171A;
+  --plan-ink: #E6E4DE;
+  --plan-poche: #E6E4DE;
+  --plan-fill: #16171A;
+  --plan-dim: #8EA2FF;
+  --plan-faint: #2C2E33;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 2px 6px rgba(0, 0, 0, 0.35), 0 16px 48px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
