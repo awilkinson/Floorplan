@@ -6,7 +6,7 @@ import { DropZone } from './DropZone';
 import { fileToImages, type PreparedImage } from '../ai/files';
 import { importProduct } from '../ai/importer';
 import { errorCopy } from '../ai/client';
-import { useAIKind } from './Designer';
+import { useAIKind, useImagesVisible } from './Designer';
 import { useThumb } from './thumbs';
 import { activeRoom, addCustomEntry, catalogEntry, editItems, fullCatalog, setUi, toast, useStore } from '../state/store';
 import { CATEGORY_LABELS } from '../catalog/catalog';
@@ -29,11 +29,12 @@ export function AddPieceDialog() {
   const [notes, setNotes] = useState('');
   const [images, setImages] = useState<PreparedImage[]>([]);
   const [entry, setEntry] = useState<CatalogEntry | null>(null);
-  const [meta, setMeta] = useState<{ confidence: string; source?: string }>({ confidence: 'medium' });
+  const [meta, setMeta] = useState<{ confidence: string; source?: string; needsInfo?: string; sawPhotos?: boolean }>({ confidence: 'medium' });
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const ctl = useRef<AbortController | null>(null);
   const ai = useAIKind();
+  const visible = useImagesVisible();
   const replacing = seed?.replaceId ? findItem(seed.replaceId) : null;
 
   useEffect(() => {
@@ -79,8 +80,10 @@ export function AddPieceDialog() {
 
   const canGo = (url.trim().length > 8 || images.length > 0) && ai !== 'none';
 
-  const go = async () => {
+  const go = async (extraNotes?: string) => {
     if (!canGo) return;
+    const noteText = [notes.trim(), extraNotes?.trim()].filter(Boolean).join('. ');
+    if (extraNotes) setNotes(noteText);
     setStage('working');
     setError(null);
     setTick(0);
@@ -88,9 +91,9 @@ export function AddPieceDialog() {
     ctl.current = c;
     try {
       const preview = images[0] ? { id: `local-preview-${Date.now()}`, url: images[0].url, kind: 'product' as const, width: images[0].width, height: images[0].height } : undefined;
-      const r = await importProduct({ url: url.trim() || undefined, notes: notes.trim() || undefined, images: images.map((i) => i.blob), image: preview, signal: c.signal });
+      const r = await importProduct({ url: url.trim() || undefined, notes: noteText || undefined, images: images.map((i) => i.blob), image: preview, signal: c.signal });
       setEntry(r.entry);
-      setMeta({ confidence: r.confidence, source: r.dimensionsSource });
+      setMeta({ confidence: r.confidence, source: r.dimensionsSource, needsInfo: r.needsInfo, sawPhotos: r.sawPhotos });
       setStage('result');
     } catch (e) {
       if ((e as { code?: string })?.code === 'cancelled') {
@@ -159,7 +162,7 @@ export function AddPieceDialog() {
           <>
             <span className="grow muted small">{ai === 'none' ? 'Reading products uses Claude — open this page in claude.ai.' : 'Links are identified by maker and model. A screenshot with dimensions is most accurate.'}</span>
             <Button onClick={closeAddPiece}>Cancel</Button>
-            <Button variant="primary" icon={<ArrowRight size={14} />} disabled={!canGo} onClick={go}>
+            <Button variant="primary" icon={<ArrowRight size={14} />} disabled={!canGo} onClick={() => go()}>
               Bring it in
             </Button>
           </>
@@ -218,6 +221,7 @@ export function AddPieceDialog() {
             <span>and / or</span>
           </div>
           <DropZone files={images} onChange={setImages} max={3} icon={<ImagePlus size={20} />} title="Drop a photo or screenshot" hint="Paste with ⌘V, or click to choose. Up to 3 images." />
+          {visible === false && images.length > 0 && <p className="field-hint">Claude can’t see photos in this window, so I’ll read the piece’s colors and proportions from the photo. Say what it is below for the best match.</p>}
           <label className="field">
             <span className="field-label">Anything I should know?</span>
             <input className="text-input" placeholder="e.g. the 96″ version in olive velvet, or ‘the one on the left’" value={notes} onChange={(e) => setNotes(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
@@ -233,7 +237,7 @@ export function AddPieceDialog() {
           {url && <p className="muted small mono ap-url">{url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 80)}</p>}
         </div>
       )}
-      {stage === 'result' && entry && <Result entry={entry} setEntry={setEntry} meta={meta} photo={images[0]?.url} />}
+      {stage === 'result' && entry && <Result entry={entry} setEntry={setEntry} meta={meta} photo={images[0]?.url} onAnswer={(a) => go(a)} />}
     </Dialog>
   );
 }
@@ -247,7 +251,8 @@ function findItem(id: string): CatalogEntry | null {
   return it ? catalogEntry(it.ref, s) ?? null : null;
 }
 
-function Result({ entry, setEntry, meta, photo }: { entry: CatalogEntry; setEntry: (e: CatalogEntry) => void; meta: { confidence: string; source?: string }; photo?: string }) {
+function Result({ entry, setEntry, meta, photo, onAnswer }: { entry: CatalogEntry; setEntry: (e: CatalogEntry) => void; meta: { confidence: string; source?: string; needsInfo?: string; sawPhotos?: boolean }; photo?: string; onAnswer: (a: string) => void }) {
+  const [answer, setAnswer] = useState('');
   const units = useStore((s) => s.units);
   const thumb = useThumb(entry);
   const fmt = useMemo(() => (v: number) => formatLength(v, units, { precision: 2, inchesBelow: 9 }), [units]);
@@ -282,7 +287,18 @@ function Result({ entry, setEntry, meta, photo }: { entry: CatalogEntry; setEntr
             </label>
           ))}
         </div>
-        <p className="field-hint">{src}</p>
+        <p className="field-hint">{meta.sawPhotos === false ? 'Claude couldn’t see your photo in this window, so the color and proportions come from the photo and the size is an estimate. ' : ''}{src}</p>
+        {meta.needsInfo && (
+          <div className="notice ap-question">
+            <strong>{meta.needsInfo}</strong>
+            <div className="ap-answer">
+              <input className="text-input" placeholder="e.g. Cloud sofa, 8 ft, in Belgian linen" value={answer} onChange={(e) => setAnswer(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' && answer.trim()) onAnswer(answer); }} />
+              <Button size="sm" variant="primary" disabled={!answer.trim()} onClick={() => onAnswer(answer)}>
+                Update
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

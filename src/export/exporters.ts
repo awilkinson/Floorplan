@@ -321,10 +321,10 @@ async function exportPdf(room: Room, layout: Layout | null, units: Units, catalo
   doc.text(new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }), cx + 8, tbY + 85);
   doc.setFontSize(20);
   doc.text(`A-${101 + Math.max(0, room.layoutOrder.indexOf(layout?.id ?? ''))}`, cx + colW * 0.62 + 8, tbY + 70);
-  if (room.survey?.method === 'photos') {
+  if (room.survey?.method === 'photos' || (room.survey?.method === 'manual' && room.survey.confidence !== 'high')) {
     doc.setFontSize(6.5);
     doc.setTextColor(140);
-    doc.text('Estimated from photos. Verify on site.', cx + colW * 0.62 + 8, tbY + 86);
+    doc.text(room.survey.method === 'photos' ? 'Estimated from photos. Verify on site.' : 'Estimated. Verify on site.', cx + colW * 0.62 + 8, tbY + 86);
   }
   // north arrow
   const nx = cx + colW - 22;

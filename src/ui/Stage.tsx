@@ -341,7 +341,7 @@ function TitleBlock() {
         <span>Clg {formatLength(room.ceilingHeight, units, { compact: true })}</span>
         <span className="tbk-sheet">A-10{idx}</span>
       </div>
-      {room.survey?.method === 'photos' && <div className={cx('tbk-note')}>Dimensions estimated from photos</div>}
+      {(room.survey?.method === 'photos' || (room.survey?.method === 'manual' && room.survey.confidence !== 'high')) && <div className={cx('tbk-note')}>Dimensions estimated {room.survey.method === 'photos' ? 'from photos' : 'from a description'}</div>}
     </div>
   );
 }

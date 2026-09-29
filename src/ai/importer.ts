@@ -3,7 +3,8 @@ import { FINISH_MAP, FINISHES, SLOT_FAMILIES, type Finish } from '../catalog/fin
 import { GENERATORS } from '../catalog/generators';
 import type { AssetRef, CatalogEntry, Category } from '../model/types';
 import { inch } from '../model/units';
-import { getAI } from './client';
+import { getAI, imageSupport } from './client';
+import { photoFactsText, readPhoto } from './vision';
 import { productPrompt } from './prompts';
 
 interface RawProduct {
@@ -24,6 +25,7 @@ interface RawProduct {
   confidence?: string;
   imageUse?: 'none' | 'rug' | 'art';
   dimensionsSource?: string;
+  needsInfo?: string;
 }
 
 const CATEGORIES: Category[] = ['sofa', 'sectional', 'lounge-chair', 'ottoman', 'dining-chair', 'coffee-table', 'side-table', 'dining-table', 'desk', 'console', 'storage', 'bed', 'rug', 'floor-lamp', 'table-lamp', 'plant', 'hifi', 'music', 'baby', 'bench', 'art', 'media', 'office-chair', 'decor'];
@@ -70,13 +72,28 @@ export interface ImportResult {
   entry: CatalogEntry;
   confidence: string;
   dimensionsSource?: string;
+  /** A question for the owner when Claude couldn't tell what the piece is. */
+  needsInfo?: string;
+  /** False when the view couldn't send the photos and the planner described them instead. */
+  sawPhotos: boolean;
 }
 
 export async function importProduct(input: { url?: string; notes?: string; images: Blob[]; image?: AssetRef; signal?: AbortSignal }): Promise<ImportResult> {
   const ai = await getAI();
   if (ai.kind === 'none') throw { code: 'unavailable', message: '' };
-  const raw = await ai.json<RawProduct>(productPrompt(input.url, input.notes, input.images.length), { tier: 'default', images: input.images.length ? input.images : undefined, signal: input.signal, cache: false });
-  return { entry: toEntry(raw, input), confidence: raw.confidence ?? 'medium', dimensionsSource: raw.dimensionsSource };
+  const lim = input.images.length ? await imageSupport() : null;
+  const send = lim ? input.images.slice(0, lim.maxCount) : [];
+  let facts: string | undefined;
+  if (input.images.length && !lim) {
+    try {
+      facts = photoFactsText(await Promise.all(input.images.slice(0, 3).map(readPhoto)));
+    } catch {
+      facts = undefined;
+    }
+  }
+  const raw = await ai.json<RawProduct>(productPrompt(input.url, input.notes, send.length, facts), { tier: 'default', images: send.length ? send : undefined, signal: input.signal, cache: false });
+  const needsInfo = typeof raw.needsInfo === 'string' && raw.needsInfo.trim() ? raw.needsInfo.trim() : undefined;
+  return { entry: toEntry(raw, input), confidence: raw.confidence ?? 'medium', dimensionsSource: raw.dimensionsSource, needsInfo, sawPhotos: !input.images.length || !!lim };
 }
 
 export function toEntry(raw: RawProduct, input: { url?: string; image?: AssetRef }): CatalogEntry {

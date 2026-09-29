@@ -1,11 +1,14 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { activeLayout, activeRoom, editItems, fullCatalog, previewProposal, setProposals, toast, useStore, type Proposal } from '../state/store';
+import { activeLayout, activeRoom, addCustomEntry, editItems, fullCatalog, previewProposal, setProposals, toast, useStore, type Proposal } from '../state/store';
 import { analyzeLayout } from '../design/checks';
-import { errorCopy, getAI, parseJsonLoose, type AIError } from './client';
+import { errorCopy, getAI, imageSupport, parseJsonLoose, type AIError } from './client';
+import { photoFactsText, readPhoto } from './vision';
+import { importProduct } from './importer';
+import { uploadImage } from '../persist/assets';
 import { editPrompt, ideasPrompt, type IdeaRequest } from './prompts';
 import { ideaToLayout, rawToItems, resolveRef, settle, type RawIdea, type RawItem } from './solver';
-import type { Item, Layout, Zone } from '../model/types';
+import type { CatalogEntry, Item, Layout, Zone } from '../model/types';
 import { bearingToRotation, inch } from '../model/units';
 import { FINISH_MAP } from '../catalog/finishes';
 
@@ -19,6 +22,10 @@ export interface Msg {
   applied?: boolean;
   fixes?: string[];
   images?: string[];
+  /** What the designer is doing while it thinks. */
+  progress?: string;
+  /** Pieces this reply brought into the library. */
+  newRefs?: string[];
   at: number;
 }
 
@@ -254,28 +261,58 @@ function applyOps(items: Item[], ops: RawOp[], catalog: ReturnType<typeof fullCa
   return { items: list, touched };
 }
 
+const URL_RE = /https?:\/\/[^\s<>"')]+/g;
+const PIECE_RE = /\b(add|put|place|swap|replace|try|buy|bought|get|use|bring|want|love|like|this|these|that|those|here'?s|sofa|couch|sectional|settee|chair|armchair|lounger|stool|bench|ottoman|pouf|table|desk|console|sideboard|credenza|cabinet|bookcase|shelf|shelving|dresser|bed|crib|rug|carpet|lamp|sconce|pendant|plant|mirror|art|print|painting|speaker|piano|tv)\b/i;
+const MOOD_RE = /\b(inspir\w*|vibe|mood|style like|feel like|look like|palette|colou?rs? like)\b/i;
+
 export async function askDesigner(message: string, opts: { focusIds?: string[]; images?: Blob[] } = {}) {
   const s = useStore.getState();
   const room = activeRoom(s);
   if (!room || useThread.getState().busy) return;
+  const urls = [...new Set(message.match(URL_RE) ?? [])].slice(0, 4);
+  const images = opts.images ?? [];
+  // Links, or photos of a piece ("add this couch"), bring the piece in first.
+  if (urls.length || (images.length && PIECE_RE.test(message) && !MOOD_RE.test(message))) return addPiecesFromChat(message, urls, images);
   if (IDEA_RE.test(message) && !opts.focusIds?.length && !/\b(this|the current|it)\b.*\b(layout)\b/i.test(message)) return askForIdeas(message);
-  const layout = activeLayout(s);
-  if (!layout) return;
+  if (!activeLayout(s)) return;
   const hist = history();
-  push({ role: 'user', text: message });
+  push({ role: 'user', text: message, images: images.map((b) => URL.createObjectURL(b)) });
   const mid = push({ role: 'designer', text: '', status: 'thinking', kind: 'edit' });
+  await runEdit(mid, message, hist, { focusIds: opts.focusIds, images });
+}
+
+/** Ask for an edit to the active layout and apply it, reporting into message `mid`. */
+async function runEdit(mid: string, message: string, hist: { role: 'user' | 'assistant'; text: string }[], opts: { focusIds?: string[]; images?: Blob[]; after?: string; newRefs?: string[]; keepBusy?: boolean } = {}) {
+  const s = useStore.getState();
+  const room = activeRoom(s);
+  const layout = activeLayout(s);
+  if (!room || !layout) return;
   const ai = await getAI();
   if (ai.kind === 'none') {
     patch(mid, { status: 'error', text: errorCopy({ code: 'unavailable', message: '' }) });
     return;
   }
-  const controller = new AbortController();
+  const controller = useThread.getState().controller ?? new AbortController();
   useThread.setState({ busy: true, controller });
   const catalog = fullCatalog(s);
   const analysis = analyzeLayout(room, layout, s.custom);
   try {
-    const prompt = editPrompt(room, layout, catalog, s.custom, analysis, message, hist, opts.focusIds);
-    const res = (await ai.json<{ reply?: string; ops?: RawOp[]; zones?: Zone[] }>(prompt, { tier: 'default', cache: false, signal: controller.signal, images: opts.images })) ?? {};
+    // Photos go to Claude where the view allows; elsewhere the planner describes them.
+    let request = message;
+    let images: Blob[] | undefined;
+    if (opts.images?.length) {
+      const lim = await imageSupport();
+      if (lim) images = opts.images.slice(0, lim.maxCount);
+      else {
+        try {
+          request += `\n\n(The owner attached photo(s) you can't see in this window. The planner measured: ${photoFactsText(await Promise.all(opts.images.slice(0, 3).map(readPhoto)))})`;
+        } catch {
+          /* send the words alone */
+        }
+      }
+    }
+    const prompt = editPrompt(room, layout, catalog, s.custom, analysis, request, hist, opts.focusIds);
+    const res = (await ai.json<{ reply?: string; ops?: RawOp[]; zones?: Zone[] }>(prompt, { tier: 'default', cache: false, signal: controller.signal, images })) ?? {};
     const notes: string[] = [];
     const ops = Array.isArray(res.ops) ? res.ops : [];
     let applied = false;
@@ -283,17 +320,102 @@ export async function askDesigner(message: string, opts: { focusIds?: string[]; 
       const { items, touched } = applyOps(layout.items, ops, catalog, notes);
       const settled = settle(room, items, catalog, { movable: touched });
       notes.push(...settled.fixes);
-      editItems(`Designer: ${message.slice(0, 40)}`, () => settled.items, { layoutId: layout.id });
+      editItems(`Designer: ${message.replace(URL_RE, '').trim().slice(0, 40) || 'new pieces'}`, () => settled.items, { layoutId: layout.id });
       if (Array.isArray(res.zones) && res.zones.length) {
         const zones = res.zones.map((z) => ({ ...z, x: inch(z.x), y: inch(z.y), w: z.w ? inch(z.w) : undefined, d: z.d ? inch(z.d) : undefined, r: z.r ? inch(z.r) : undefined }));
         useStore.setState((st) => ({ layouts: { ...st.layouts, [layout.id]: { ...st.layouts[layout.id], zones } as Layout } }));
       }
       applied = true;
     }
-    patch(mid, { status: 'done', text: res.reply || (applied ? 'Done.' : 'Here’s my take.'), applied, fixes: notes });
+    const text = [res.reply || (applied ? 'Done.' : 'Here’s my take.'), opts.after].filter(Boolean).join('\n\n');
+    patch(mid, { status: 'done', text, applied, fixes: notes, newRefs: opts.newRefs });
   } catch (e) {
-    patch(mid, { status: 'error', text: errorCopy(e) });
+    patch(mid, { status: 'error', text: errorCopy(e), newRefs: opts.newRefs });
   } finally {
+    if (!opts.keepBusy) useThread.setState({ busy: false, controller: null });
+  }
+}
+
+/**
+ * Pieces from links or photos in the chat: read each one into the library,
+ * then have the designer place them in the room (or ask what they are).
+ */
+async function addPiecesFromChat(message: string, urls: string[], images: Blob[]) {
+  const hist = history();
+  const thumbs = images.map((b) => URL.createObjectURL(b));
+  push({ role: 'user', text: message, images: thumbs });
+  const mid = push({ role: 'designer', text: '', status: 'thinking', kind: 'edit', progress: urls.length > 1 ? `Reading ${urls.length} links…` : urls.length ? 'Reading the link…' : 'Looking at your photo…' });
+  const ai = await getAI();
+  if (ai.kind === 'none') {
+    patch(mid, { status: 'error', text: errorCopy({ code: 'unavailable', message: '' }) });
+    return;
+  }
+  const controller = new AbortController();
+  useThread.setState({ busy: true, controller });
+  const words = message.replace(URL_RE, ' ').replace(/\s+/g, ' ').trim();
+  const jobs = urls.length ? urls.map((u) => ({ url: u, images: urls.length === 1 ? images : [] })) : [{ url: undefined as string | undefined, images }];
+  try {
+    const results = await Promise.allSettled(
+      jobs.map((j, i) =>
+        importProduct({
+          url: j.url,
+          notes: words || undefined,
+          images: j.images,
+          image: j.images[0] ? { id: `local-chat-${Date.now()}-${i}`, url: thumbs[0], kind: 'product' } : undefined,
+          signal: controller.signal,
+        }),
+      ),
+    );
+    if (controller.signal.aborted) throw { code: 'cancelled', message: '' };
+    const added: CatalogEntry[] = [];
+    const questions: string[] = [];
+    let unseen = false;
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (r.status !== 'fulfilled') continue;
+      const { entry, needsInfo, confidence, sawPhotos } = r.value;
+      if (!sawPhotos) unseen = true;
+      // a link we couldn't identify: ask rather than invent a piece
+      if (needsInfo && confidence === 'low' && !jobs[i].images.length) {
+        if (!questions.includes(needsInfo)) questions.push(needsInfo);
+        continue;
+      }
+      let e = entry;
+      if (e.image && jobs[i].images[0]) {
+        try {
+          e = { ...e, image: await uploadImage(jobs[i].images[0], 'product', { caption: e.name }) };
+        } catch {
+          /* keep the session image */
+        }
+      }
+      addCustomEntry(e);
+      added.push(e);
+      if (needsInfo && !questions.includes(needsInfo)) questions.push(needsInfo);
+    }
+    if (!added.length) {
+      const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      patch(mid, {
+        status: questions.length ? 'done' : 'error',
+        progress: undefined,
+        text: questions.length ? `${questions.join(' ')} I can’t open links from here, so the name, a few words about it, or a photo will do.` : errorCopy(failed?.reason),
+      });
+      useThread.setState({ busy: false, controller: null });
+      return;
+    }
+    const names = added.map((e) => `the ${e.name}`).join(' and ');
+    const list = added.map((e) => `${e.id} “${e.name}” ${Math.round(e.w / 0.0254)}×${Math.round(e.d / 0.0254)}×${Math.round(e.h / 0.0254)}″ (${e.category})`).join('; ');
+    const placement = `${message}\n\n(The planner has added ${added.length > 1 ? 'these new pieces' : 'this new piece'} to the CATALOG: ${list}. Place ${added.length > 1 ? 'them' : 'it'} in the room where ${added.length > 1 ? 'they work' : 'it works'} best with "add" ops using ${added.length > 1 ? 'those refs' : 'that ref'}. If a new piece is clearly meant to take the place of one already here — a new sofa for the old sofa — use "swap" on that piece instead. Move other pieces only as much as needed.)`;
+    const after = [unseen ? 'I couldn’t see your photo in this window, so I matched its colors and proportions — check the size under Piece.' : '', questions.join(' ')].filter(Boolean).join(' ');
+    patch(mid, { progress: `Placing ${names}…` });
+    if (IDEA_RE.test(message)) {
+      patch(mid, { status: 'done', progress: undefined, text: `Added ${names} to your library.${after ? ' ' + after : ''} Sketching three layouts around ${added.length > 1 ? 'them' : 'it'}…`, newRefs: added.map((e) => e.id) });
+      useThread.setState({ busy: false, controller: null });
+      void askForIdeas(undefined, { feature: { ref: added[0].id, name: added[0].name } });
+      return;
+    }
+    await runEdit(mid, placement, hist, { after, newRefs: added.map((e) => e.id) });
+  } catch (e) {
+    patch(mid, { status: (e as AIError)?.code === 'cancelled' ? 'done' : 'error', progress: undefined, text: (e as AIError)?.code === 'cancelled' ? 'Stopped.' : errorCopy(e) });
     useThread.setState({ busy: false, controller: null });
   }
 }

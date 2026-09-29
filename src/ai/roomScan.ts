@@ -4,7 +4,7 @@ import { FINISH_MAP } from '../catalog/finishes';
 import { normalizeOutline, walls, rotationFacingInto } from '../model/geometry';
 import type { AssetRef, CatalogEntry, FloorKind, Item, Layout, Opening, OpeningKind, Room, RoomKind } from '../model/types';
 import { bearingToRotation, inch } from '../model/units';
-import { getAI } from './client';
+import { getAI, imageSupport } from './client';
 import { roomScanPrompt } from './prompts';
 import { resolveRef, settle } from './solver';
 
@@ -32,6 +32,8 @@ export interface ScanInput {
   photos: Blob[];
   plans: Blob[];
   measurements?: string;
+  /** The owner's own description, for views that can't send images. */
+  description?: string;
   signal?: AbortSignal;
   onProgress?: (text: string) => void;
 }
@@ -39,14 +41,16 @@ export interface ScanInput {
 export async function scanRoom(input: ScanInput, custom: Record<string, CatalogEntry>): Promise<ScanRaw> {
   const ai = await getAI();
   if (ai.kind === 'none') throw { code: 'unavailable', message: '' };
-  const lim = await ai.imageLimit();
-  const max = lim?.maxCount ?? 8;
+  // Images only where this view can send them; otherwise the owner's words.
+  const lim = await imageSupport();
+  const max = lim?.maxCount ?? 0;
   const images = [...input.plans, ...input.photos].slice(0, max);
-  const prompt = roomScanPrompt({ name: input.name, kind: input.kind, photos: Math.min(input.photos.length, max - Math.min(input.plans.length, max)), plans: Math.min(input.plans.length, max), measurements: input.measurements }, custom);
+  const plans = Math.min(input.plans.length, max);
+  const prompt = roomScanPrompt({ name: input.name, kind: input.kind, photos: Math.min(input.photos.length, max - plans), plans, measurements: input.measurements, description: input.description }, custom);
   let chars = 0;
   return ai.json<ScanRaw>(prompt, {
     tier: 'complex',
-    images,
+    images: images.length ? images : undefined,
     cache: false,
     signal: input.signal,
     onText: ({ text }) => {
@@ -63,7 +67,7 @@ const KINDS: OpeningKind[] = ['door', 'double-door', 'french-door', 'sliding-doo
 const FLOORS: FloorKind[] = ['wood-dark', 'wood-mid', 'wood-light', 'herringbone', 'stone', 'concrete', 'carpet', 'tile'];
 
 /** Build a Room and its as-is Layout from a scan. */
-export function scanToRoom(raw: ScanRaw, meta: { name: string; kind: RoomKind; photos: AssetRef[]; plan?: AssetRef; method: 'photos' | 'plan' | 'photos+plan' }, catalog: Record<string, CatalogEntry>): { room: Room; layout: Layout } {
+export function scanToRoom(raw: ScanRaw, meta: { name: string; kind: RoomKind; photos: AssetRef[]; plan?: AssetRef; method: 'photos' | 'plan' | 'photos+plan' | 'manual' }, catalog: Record<string, CatalogEntry>): { room: Room; layout: Layout } {
   const now = Date.now();
   const id = `room-${nanoid(6)}`;
   let pts = (raw.outline ?? [])
@@ -123,7 +127,7 @@ export function scanToRoom(raw: ScanRaw, meta: { name: string; kind: RoomKind; p
     survey: {
       method: meta.method,
       confidence: (['low', 'medium', 'high'].includes(String(raw.confidence)) ? raw.confidence : 'medium') as 'medium',
-      note: meta.method === 'photos' ? 'Estimated from photos. Measure one wall to calibrate everything.' : 'Read from the floor plan.',
+      note: meta.method === 'photos' ? 'Estimated from photos. Measure one wall to calibrate everything.' : meta.method === 'manual' ? 'Drawn from your description. Measure one wall to calibrate everything.' : 'Read from the floor plan.',
     },
   };
   const ws = walls(shell);
@@ -225,5 +229,7 @@ function clamp(v: unknown, lo: number, hi: number): number | undefined {
 
 /** A clean rectangle when the owner just wants to type dimensions. */
 export function blankRoom(name: string, kind: RoomKind, wIn: number, dIn: number, hIn: number): { room: Room; layout: Layout } {
-  return scanToRoom({ name, outline: [[0, 0], [wIn, 0], [wIn, dIn], [0, dIn]], ceiling: hIn, confidence: 'high' }, { name, kind, photos: [], method: 'photos' }, CATALOG_MAP);
+  const built = scanToRoom({ name, outline: [[0, 0], [wIn, 0], [wIn, dIn], [0, dIn]], ceiling: hIn, confidence: 'high' }, { name, kind, photos: [], method: 'manual' }, CATALOG_MAP);
+  built.room.survey = { method: 'manual', confidence: 'high', note: 'Drawn to the size you typed.' };
+  return built;
 }

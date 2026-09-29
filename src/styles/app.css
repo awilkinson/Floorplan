@@ -292,6 +292,8 @@ textarea.text-input { height: auto; padding: 8px 10px; resize: vertical; line-he
 .send-btn:disabled { opacity: 0.35 !important; }
 .send-btn.is-stop { background: var(--ink) !important; color: var(--bg) !important; }
 .composer-imgs { display: flex; gap: 6px; margin-bottom: 6px; }
+.composer-note { margin: 0 2px 8px; font-size: 12px; line-height: 1.45; color: var(--ink-2); }
+.msg-actions.wrap { flex-wrap: wrap; }
 .composer-img { position: relative; width: 46px; height: 46px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
 .composer-img img { width: 100%; height: 100%; object-fit: cover; }
 .composer-img button { position: absolute; top: 2px; right: 2px; display: grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff; cursor: pointer; }
@@ -410,6 +412,9 @@ textarea.text-input { height: auto; padding: 8px 10px; resize: vertical; line-he
 .ap-name { width: 100%; padding: 0 0 2px; border: 0; border-bottom: 1px dashed transparent; background: transparent; font-family: var(--font-display); font-style: italic; font-size: 27px; line-height: 1.15; outline: none; }
 .ap-name:hover { border-bottom-color: var(--line-2); }
 .ap-name:focus { border-bottom-color: var(--accent); }
+.ap-question { display: flex; flex-direction: column; gap: 8px; }
+.ap-answer { display: flex; gap: 6px; }
+.ap-answer .text-input { flex: 1 1 auto; }
 .conf { display: inline-flex; align-items: center; height: 19px; padding: 0 7px; border-radius: 5px; font-size: 10px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; }
 .conf-high { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good); }
 .conf-medium { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }

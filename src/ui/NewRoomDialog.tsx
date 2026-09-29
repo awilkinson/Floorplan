@@ -6,7 +6,7 @@ import { DropZone } from './DropZone';
 import { tilesOf, type PreparedImage } from '../ai/files';
 import { blankRoom, scanRoom, scanToRoom, type ScanRaw } from '../ai/roomScan';
 import { errorCopy } from '../ai/client';
-import { useAIKind } from './Designer';
+import { useAIKind, useImagesVisible } from './Designer';
 import { addRoom, fullCatalog, setUi, toast, useStore } from '../state/store';
 import { PlanSvg } from '../plan/PlanSvg';
 import { usePalette } from '../plan/palette';
@@ -42,6 +42,8 @@ export function NewRoomDialog() {
   const [photos, setPhotos] = useState<PreparedImage[]>([]);
   const [plans, setPlans] = useState<PreparedImage[]>([]);
   const [measure, setMeasure] = useState('');
+  const [desc, setDesc] = useState('');
+  const visible = useImagesVisible();
   const [progress, setProgress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [raw, setRaw] = useState<ScanRaw | null>(null);
@@ -59,30 +61,31 @@ export function NewRoomDialog() {
     setPhotos([]);
     setPlans([]);
     setMeasure('');
+    setDesc('');
     setRaw(null);
     setAnswers({});
     setError(null);
   }, [open]);
 
   const roomName = name.trim() || KINDS.find((k) => k.id === kind)?.name || 'New room';
-  const method: 'photos' | 'plan' | 'photos+plan' = plans.length && photos.length ? 'photos+plan' : plans.length ? 'plan' : 'photos';
+  const method: 'photos' | 'plan' | 'photos+plan' | 'manual' = visible === false || (!plans.length && !photos.length) ? 'manual' : plans.length && photos.length ? 'photos+plan' : plans.length ? 'plan' : 'photos';
   const preview = useMemo(() => (raw ? scanToRoom(raw, { name: roomName, kind, photos: [], method }, fullCatalog()) : null), [raw, roomName, kind, method]);
 
   const scan = async (extra?: string) => {
     setStage('working');
     setError(null);
-    setProgress(plans.length ? 'Reading the floor plan…' : 'Looking at the photos…');
+    setProgress(visible === false ? 'Drawing the room from your description…' : plans.length ? 'Reading the floor plan…' : 'Looking at the photos…');
     const c = new AbortController();
     ctl.current = c;
     try {
       const planBlobs: Blob[] = [];
-      for (const p of plans) {
+      for (const p of visible === false ? [] : plans) {
         planBlobs.push(p.blob);
         // Big sheets: add zoomed quadrants so small dimension text stays readable.
         if (Math.max(p.width, p.height) > 1500 && plans.length === 1) planBlobs.push(...(await tilesOf(p, 2, 2)));
       }
       const m = [measure.trim(), extra].filter(Boolean).join('. ');
-      const r = await scanRoom({ name: roomName, kind, photos: photos.map((p) => p.blob), plans: planBlobs, measurements: m || undefined, signal: c.signal, onProgress: setProgress }, useStore.getState().custom);
+      const r = await scanRoom({ name: roomName, kind, photos: photos.map((p) => p.blob), plans: planBlobs, measurements: m || undefined, description: desc.trim() || undefined, signal: c.signal, onProgress: setProgress }, useStore.getState().custom);
       if (!r || !Array.isArray(r.outline) || r.outline.length < 3) throw { code: 'bad_output', message: '' };
       setRaw(r);
       setAnswers({});
@@ -132,7 +135,8 @@ export function NewRoomDialog() {
 
   const fmt = (v: number) => formatLength(v, units, { precision: 1 });
   const parse = (s: string) => parseLength(s, units, units === 'metric' ? 'm' : 'ft');
-  const canScan = (photos.length > 0 || plans.length > 0) && ai !== 'none';
+  const described = desc.trim().length > 15 || measure.trim().length > 8;
+  const canScan = ai !== 'none' && (visible === false ? described : photos.length > 0 || plans.length > 0 || described);
 
   return (
     <Dialog
@@ -158,7 +162,7 @@ export function NewRoomDialog() {
             <span className="grow" />
             <Button onClick={closeNewRoom}>Cancel</Button>
             <Button variant="primary" icon={<ArrowRight size={14} />} disabled={!canScan} onClick={() => scan()}>
-              Measure the room
+              {visible === false || (!photos.length && !plans.length) ? 'Build the room' : 'Measure the room'}
             </Button>
           </>
         ) : stage === 'manual' ? (
@@ -238,6 +242,22 @@ export function NewRoomDialog() {
               <DropZone files={plans} onChange={setPlans} max={2} pdf icon={<FileText size={20} />} title="Drop a plan" hint="PDF, a listing plan, or a photo of a sketch with measurements." />
             </div>
           </div>
+          {visible === false && (
+            <div className="notice">
+              <strong>Claude can’t see photos or plans in this window,</strong> so it can’t measure from them here. Describe the room below and it will draw it; any photos you add are still saved with the room. In a browser tab at claude.ai, measuring from photos may work.
+            </div>
+          )}
+          <Field label={visible === false ? 'Describe the room' : 'Describe the room (optional)'} hint="Walls, doors and windows, built-ins, the view — whatever you know.">
+            <textarea
+              className="text-input"
+              id="nr-desc"
+              rows={3}
+              placeholder="e.g. About 25 by 23 feet, 10½′ coffered ceiling. Three pairs of French doors on the north wall to a terrace; fireplace in the middle of the west wall with shelves either side; library shelves along the south wall; a door to the hall on the east wall."
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </Field>
           <Field label="Measurements you know (optional)" hint="Even one real measurement makes everything else more accurate.">
             <input className="text-input" placeholder="e.g. fireplace wall 23′, ceiling 10′-6″, doors 8′ tall" value={measure} onChange={(e) => setMeasure(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
           </Field>

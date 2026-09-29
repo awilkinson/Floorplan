@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUp, Check, ImagePlus, Loader2, RotateCcw, Sparkles, Square, Undo2, X, Eye, Wand2 } from 'lucide-react';
 import { acceptProposal, activeRoom, previewProposal, undo, useStore, type Proposal } from '../state/store';
-import { askDesigner, askForIdeas, clearThread, stopDesigner, useThread, type Msg } from '../ai/designer';
-import { getAI } from '../ai/client';
+import { askDesigner, askForIdeas, clearThread, ideasWith, stopDesigner, useThread, type Msg } from '../ai/designer';
+import { getAI, imageSupport } from '../ai/client';
 import { PlanSvg } from '../plan/PlanSvg';
 import { CATALOG_MAP } from '../catalog/catalog';
 import { bounds, offsetPolygon } from '../model/geometry';
@@ -11,6 +11,35 @@ import { Button, IconButton, cx } from './primitives';
 import { GoalsEditor } from './RoomPanel';
 import type { Room } from '../model/types';
 import { fileToImages } from '../ai/files';
+
+/** Whether photos can be shown to Claude in this view. */
+export function useImagesVisible() {
+  const [ok, setOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    imageSupport().then((l) => alive && setOk(!!l));
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return ok;
+}
+
+function NewPieces({ refs }: { refs: string[] }) {
+  const custom = useStore((s) => s.custom);
+  const busy = useThread((s) => s.busy);
+  const entries = refs.map((r) => custom[r]).filter(Boolean);
+  if (!entries.length) return null;
+  return (
+    <div className="msg-actions wrap">
+      {entries.map((e) => (
+        <Button key={e.id} size="sm" icon={<Sparkles size={13} />} disabled={busy} onClick={() => ideasWith(e.id)}>
+          Try the {e.name} in 3 layouts
+        </Button>
+      ))}
+    </div>
+  );
+}
 
 export function useAIKind() {
   const [kind, setKind] = useState<'claude' | 'mock' | 'none' | 'loading'>('loading');
@@ -108,7 +137,7 @@ function Message({ m, room }: { m: Msg; room: Room }) {
       </div>
       {m.status === 'thinking' ? (
         <p className="thinking">
-          <Loader2 size={14} className="spin" /> {m.kind === 'ideas' ? 'Sketching three directions — a minute or two for well-considered plans…' : 'Thinking it through…'}
+          <Loader2 size={14} className="spin" /> {m.progress ?? (m.kind === 'ideas' ? 'Sketching three directions — a minute or two for well-considered plans…' : 'Thinking it through…')}
         </p>
       ) : (
         <p>{m.text}</p>
@@ -136,6 +165,7 @@ function Message({ m, room }: { m: Msg; room: Room }) {
           </ul>
         </details>
       )}
+      {m.newRefs && m.newRefs.length > 0 && m.status !== 'thinking' && <NewPieces refs={m.newRefs} />}
       {m.applied && (
         <div className="msg-actions">
           <Button size="sm" variant="quiet" icon={<Undo2 size={13} />} onClick={() => undo()}>
@@ -195,6 +225,7 @@ function Composer({ busy }: { busy: boolean }) {
   const [text, setText] = useState('');
   const [images, setImages] = useState<{ blob: Blob; url: string }[]>([]);
   const selection = useStore((s) => s.selection);
+  const visible = useImagesVisible();
   const ta = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const el = ta.current;
@@ -211,6 +242,7 @@ function Composer({ busy }: { busy: boolean }) {
   };
   return (
     <div className="composer">
+      {images.length > 0 && visible === false && <p className="composer-note">Claude can’t see photos in this window, so I’ll read the piece’s colors and proportions from it. A few words help — “add this couch, it’s 8 feet”.</p>}
       {images.length > 0 && (
         <div className="composer-imgs">
           {images.map((im, i) => (
@@ -251,7 +283,7 @@ function Composer({ busy }: { busy: boolean }) {
           ref={ta}
           id="designer-input"
           rows={1}
-          placeholder={selection.length ? 'Ask about the selected piece…' : 'Ask for anything — “make room for a piano”, “cozier for winter”'}
+          placeholder={selection.length ? 'Ask about the selected piece…' : 'Ask for anything, paste a product link, or add a photo — “add this couch”'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

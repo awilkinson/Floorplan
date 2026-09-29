@@ -207,9 +207,9 @@ Reply with ONE JSON object and nothing else:
 Use "ops": [] when nothing should change. Include "zones" only if they help explain the plan.`;
 }
 
-export function productPrompt(url: string | undefined, notes: string | undefined, imageCount: number): string {
+export function productPrompt(url: string | undefined, notes: string | undefined, imageCount: number, photoFacts?: string): string {
   return `TASK: product
-You are cataloguing a piece of furniture for a 3D room planner. ${imageCount ? `You have ${imageCount} image(s) of it (product photo or a screenshot of a product page — read any dimensions, materials and price printed on it).` : ''}${url ? ` Product link: ${url} — you cannot open it, but the URL often names the maker and model; use what you know about that exact product.` : ''}${notes ? ` Owner notes: ${notes}` : ''}
+You are cataloguing a piece of furniture for a 3D room planner. ${imageCount ? `You have ${imageCount} image(s) of it (product photo or a screenshot of a product page — read any dimensions, materials and price printed on it).` : ''}${photoFacts ? `\nThe owner attached photo(s), but you can't see images in this window. The planner measured this from them:\n${photoFacts}\nTake what the piece is from the owner's words, its colors from these measurements (put them in "colors" as hex), and its proportions from the shape: a front view's width-to-height ratio sets W against H (a sofa 2.8× as wide as tall at 30" high is about 84" wide). Say in "description" that the size is estimated from the photo.` : ''}${url ? ` Product link: ${url} — you cannot open it, but the URL often names the maker and model; use what you know about that exact product.` : ''}${notes ? ` Owner notes: ${notes}` : ''}
 
 Identify the piece and describe it with the planner's parametric generators so it can be drawn in 3D and in plan. Prefer printed or well-known real dimensions; otherwise estimate from proportions and typical sizes for that kind of piece (sofa seat height 16–18", depth 36–42"; lounge chair 30–36" wide; coffee table 14–17" high; dining table 29–30"; floor lamp 55–70").
 
@@ -218,20 +218,22 @@ ${GENERATOR_GUIDE}
 ${finishBrief()}
 
 Reply with ONE JSON object and nothing else:
-{"name":"model name as sold","brand":"maker or empty","designer":"designer and year or empty","category":"sofa|sectional|lounge-chair|ottoman|dining-chair|coffee-table|side-table|dining-table|desk|console|storage|bed|rug|floor-lamp|table-lamp|plant|hifi|music|baby|bench|art|media|office-chair|decor","generator":"one of the generators","params":{},"w":0,"d":0,"h":0,"finishes":{"slot":"finish id"},"colors":{"slot":"#hex when no finish id is close"},"styles":["style ids"],"price":"$ range or empty","description":"one line on what makes it special","confidence":"high|medium|low","imageUse":"none|rug|art","dimensionsSource":"printed|known|estimated"}
+{"name":"model name as sold","brand":"maker or empty","designer":"designer and year or empty","category":"sofa|sectional|lounge-chair|ottoman|dining-chair|coffee-table|side-table|dining-table|desk|console|storage|bed|rug|floor-lamp|table-lamp|plant|hifi|music|baby|bench|art|media|office-chair|decor","generator":"one of the generators","params":{},"w":0,"d":0,"h":0,"finishes":{"slot":"finish id"},"colors":{"slot":"#hex when no finish id is close"},"styles":["style ids"],"price":"$ range or empty","description":"one line on what makes it special","confidence":"high|medium|low","imageUse":"none|rug|art","dimensionsSource":"printed|known|estimated","needsInfo":"one short question for the owner, or empty"}
 w, d, h are inches. For rugs and wall art set imageUse so the photo itself is used as the pattern.
 "styles" uses these ids: ${STYLES.map((s) => s.id).join(', ')}.
-"dimensionsSource": "printed" only when you read the numbers in one of the images; "known" when they are the maker's published size you know; otherwise "estimated".`;
+"dimensionsSource": "printed" only when you read the numbers in one of the images; "known" when they are the maker's published size you know; otherwise "estimated".
+Don't invent a specific product. If you can't tell what it is — a link that only carries a product number, with no image or name — give your best generic guess from any words you have, set confidence "low", and put in "needsInfo" one short question such as "What's this piece called? That link only has a product number."`;
 }
 
-export function roomScanPrompt(meta: { name: string; kind: string; photos: number; plans: number; measurements?: string }, custom: Record<string, CatalogEntry>): string {
+export function roomScanPrompt(meta: { name: string; kind: string; photos: number; plans: number; measurements?: string; description?: string }, custom: Record<string, CatalogEntry>): string {
+  const blind = !meta.photos && !meta.plans;
   return `TASK: scan
-You are an architect measuring a room for a 3D planner from ${meta.photos} photo(s)${meta.plans ? ` and ${meta.plans} floor plan image(s) (the plan images come first${meta.plans > 1 ? '; after a full sheet, the next images may be zoomed crops of that same sheet so small dimension text is legible' : ''})` : ''}. The owner calls it "${meta.name}" (${meta.kind}).${meta.measurements ? ` Measurements the owner gave: ${meta.measurements}. Treat these as exact.` : ''}
+${blind ? `You are an architect drawing a room for a 3D planner from the owner's description — you have no photos or plans, so follow their words closely and use sensible, typical sizes for anything they leave out. The owner calls it "${meta.name}" (${meta.kind}).${meta.description ? `\nOWNER'S DESCRIPTION: ${meta.description}` : ''}${meta.measurements ? `\nMeasurements the owner gave: ${meta.measurements}. Treat these as exact.` : ''}\n\nBuild one consistent plan: walls as an outline, then openings on walls, then built-ins, then any furniture they mention.\n- North is the TOP of the plan: make the wall with the most windows or the main view the north wall (W1) unless they say otherwise.` : `You are an architect measuring a room for a 3D planner from ${meta.photos} photo(s)${meta.plans ? ` and ${meta.plans} floor plan image(s) (the plan images come first${meta.plans > 1 ? '; after a full sheet, the next images may be zoomed crops of that same sheet so small dimension text is legible' : ''})` : ''}. The owner calls it "${meta.name}" (${meta.kind}).${meta.measurements ? ` Measurements the owner gave: ${meta.measurements}. Treat these as exact.` : ''}
 
 Be as accurate as you can:
 - ${meta.plans ? 'Read the floor plan first: its dimension strings override anything you estimate from photos. Find this room on the plan (by name, or by matching doors, windows and built-ins to the photos).' : 'Work out the size from references in the photos: interior doors are about 80" tall (84–96" in larger homes), door leaves 30–36" wide, French door leaves 30–36", countertops 36", dining tables 29–30", seat height 17–18", outlets about 14" and switches 48" above the floor, baseboards 4–9", typical ceilings 96–120". Cross-check every estimate against two references and across photos.'}
 - Build one consistent plan: walls as an outline, then openings on walls, then built-ins, then loose furniture.
-- North is the TOP of the plan: make the wall with the most windows or the main view the north wall (W1) unless the plan shows otherwise.
+- North is the TOP of the plan: make the wall with the most windows or the main view the north wall (W1) unless the plan shows otherwise.`}
 
 ${COORDS}
 The outline runs clockwise from the north-west corner (0,0), so W1 is the north wall, then around to the east, south and west walls. For each opening, "offset" is inches along its wall from that wall's start corner (clockwise order) to the near side of the opening.

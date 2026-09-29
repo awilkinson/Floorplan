@@ -92,6 +92,7 @@ function mockClient(): AIClient {
       return parseJsonLoose(t) as T;
     },
     async imageLimit() {
+      if ((window as unknown as { __FP_MOCK_NO_IMAGES__?: boolean }).__FP_MOCK_NO_IMAGES__) return null;
       return { maxCount: 8, maxInputBytes: 20_000_000, mediaTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] };
     },
   };
@@ -127,6 +128,13 @@ export function getAI(): Promise<AIClient> {
     return none;
   })();
   return pending;
+}
+
+/** Whether Claude can be shown images in this view (cached). */
+let imagesP: Promise<{ maxCount: number } | null> | null = null;
+export function imageSupport(): Promise<{ maxCount: number } | null> {
+  if (!imagesP) imagesP = getAI().then((ai) => ai.imageLimit().catch(() => null));
+  return imagesP;
 }
 
 /** Parse a reply that should be JSON, tolerating fences and a sentence around it. */
@@ -168,7 +176,7 @@ export function errorCopy(e: unknown): string {
     case 'image_rejected':
       return 'One of the images couldn’t be read. Try a JPG or PNG under 20 MB.';
     case 'images_unavailable':
-      return 'Images can’t be sent from this view. Paste the details as text instead.';
+      return 'Claude can’t see photos in this window. Describe the piece in a few words, or open this page in your browser at claude.ai.';
     case 'prompt_too_large':
       return 'That was too much to send at once. Try fewer photos or a shorter note.';
     case 'refused':
