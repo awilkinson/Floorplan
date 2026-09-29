@@ -158,7 +158,7 @@ export const PlanSvg = memo(function PlanSvg(props: PlanProps) {
       {analysis && options.overlays.circulation && analysis.paths.map((p, i) => <polyline key={`c${i}`} points={pts(p.points)} fill="none" stroke={p.tight ? P.warn : P.dim} {...sp(1.6)} strokeDasharray={mpp ? `${0.12} ${0.08}` : '7 5'} strokeLinecap="round" opacity={0.85} />)}
       {analysis && options.overlays.clearances && analysis.conflicts.map((c, i) => <circle key={`x${i}`} cx={c.x} cy={c.y} r={Math.max(0.12, c.r)} fill={P.bad} fillOpacity={0.12} stroke={P.bad} {...sp(1.2)} />)}
       {analysis?.hifi && options.overlays.hifi && <HifiMark h={analysis.hifi} P={P} sp={sp} units={units} textSize={textSize} />}
-      {analysis?.playZone && options.overlays.zones && (
+      {analysis?.playZone && options.overlays.zones && !layout?.zones?.some((z) => z.kind === 'play') && (
         <g>
           <circle cx={analysis.playZone.x} cy={analysis.playZone.y} r={analysis.playZone.r} fill={P.good} fillOpacity={0.06} stroke={P.good} {...sp(1)} strokeDasharray={mpp ? '0.08 0.05' : '5 4'} />
           <text x={analysis.playZone.x} y={analysis.playZone.y} textAnchor="middle" dominantBaseline="middle" fontSize={textSize * 0.9} fill={P.good} style={{ fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.06em' }}>
@@ -166,7 +166,7 @@ export const PlanSvg = memo(function PlanSvg(props: PlanProps) {
           </text>
         </g>
       )}
-      {analysis?.treeSpot && options.overlays.zones && (
+      {analysis?.treeSpot && options.overlays.zones && !layout?.zones?.some((z) => z.kind === 'tree') && (
         <g>
           <circle cx={analysis.treeSpot.x} cy={analysis.treeSpot.y} r={analysis.treeSpot.r} fill="none" stroke={P.good} {...sp(1)} strokeDasharray={mpp ? '0.05 0.05' : '3 4'} />
           {treeLabelShown(analysis) && (

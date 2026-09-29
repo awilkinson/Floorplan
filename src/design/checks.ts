@@ -282,9 +282,22 @@ export function analyzeLayout(room: Room, layout: Layout, custom: Record<string,
       else checks.push({ id: 'coffee', group: 'Seating', status: 'good', label: `Coffee table sits ${fmt(gap)} from the seat` });
       if (ratio < 0.4 && main.entry.category === 'sofa') checks.push({ id: 'coffee-size', group: 'Seating', status: 'info', label: 'Coffee table reads small for the sofa', detail: 'About two-thirds of the sofa length looks balanced.' });
     } else if (seats.length >= 2) checks.push({ id: 'coffee', group: 'Seating', status: 'info', label: 'No coffee table within reach of the main seat' });
+    // Which seats join the main group: near it and turned toward its middle.
+    // Chairs facing away (a tea corner, a reading chair at the window) are a
+    // group of their own and aren't held to this group's rug or 10′ circle.
+    const hub = coffee && coffee.d < 1.6 ? coffee.s.obb.c : { x: front.x + v.x * 0.9, y: front.y + v.y * 0.9 };
+    const others = seats.filter((s) => {
+      if (s === main) return false;
+      const dx = hub.x - s.obb.c.x;
+      const dy = hub.y - s.obb.c.y;
+      const l = Math.hypot(dx, dy);
+      if (l > 3.2) return false;
+      if (l < 0.6) return true;
+      const f = itemAxes(s.item.rotation).v;
+      return (f.x * dx + f.y * dy) / l > 0.26;
+    });
     // conversation distance
-    const others = seats.filter((s) => s !== main);
-    const far = others.filter((s) => Math.hypot(s.obb.c.x - main.obb.c.x, s.obb.c.y - main.obb.c.y) < 4.2 && Math.hypot(s.obb.c.x - main.obb.c.x, s.obb.c.y - main.obb.c.y) > 3.3);
+    const far = others.filter((s) => Math.hypot(s.obb.c.x - main.obb.c.x, s.obb.c.y - main.obb.c.y) > 3.3);
     if (far.length) checks.push({ id: 'talk', group: 'Seating', status: 'warn', label: 'Seats are more than 10′ apart', detail: 'Conversation groups work best inside a 10′ circle.', items: far.map((f) => f.item.id) });
     else if (others.length) checks.push({ id: 'talk', group: 'Seating', status: 'good', label: 'Seating sits within an easy 10′ conversation circle' });
     // rug under front legs
